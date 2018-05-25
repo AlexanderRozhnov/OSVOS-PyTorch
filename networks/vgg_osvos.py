@@ -12,6 +12,37 @@ import torch.nn.modules as modules
 from layers.osvos_layers import center_crop, interp_surgery
 from mypath import Path
 
+class OSVOS_skip(nn.Module):
+    def __init__(self, osvos):
+        super(OSVOS_skip, self).__init__()
+
+        print("Constructing OSVOS-skip architecture..")
+        self.osvos = osvos
+        self.final = nn.Conv2d(128, 1, kernel_size=1, padding=0)
+        
+        
+    def forward(self, x, first_frame):
+        crop_h, crop_w = int(x.size()[-2]), int(x.size()[-1])
+        x = self.osvos.stages[0](x)
+
+        side = []
+        side_out = []
+        for i in range(1, len(self.osvos.stages)):
+            x = self.osvos.stages[i](x)
+            side_temp = self.osvos.side_prep[i - 1](x)
+            side.append(center_crop(self.osvos.upscale[i - 1](side_temp), crop_h, crop_w))
+            side_out.append(center_crop(self.osvos.upscale_[i - 1](self.osvos.score_dsn[i - 1](side_temp)), crop_h, crop_w))
+
+        if first_frame:
+            side.extend(side)
+        else:
+            side.extend(self.prev_side)
+        out = torch.cat(side[:], dim=1)
+        out = self.final(out)
+        side_out.append(out)
+        self.prev_side = side[:len(self.osvos.stages) - 1]
+        return side_out
+
 
 class OSVOS(nn.Module):
     def __init__(self, pretrained=1):
@@ -51,8 +82,8 @@ class OSVOS(nn.Module):
         self.side_prep = side_prep
         self.score_dsn = score_dsn
 
-        self.fuse = nn.Conv2d(64, 1, kernel_size=1, padding=0)
-
+        self.fuse = nn.Conv2d(64, 3, kernel_size=1, padding=0)
+        
         print("Initializing weights..")
         self._initialize_weights(pretrained)
 

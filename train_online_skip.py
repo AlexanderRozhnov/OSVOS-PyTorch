@@ -31,7 +31,7 @@ else:
 
 db_root_dir = Path.db_root_dir()
 save_dir = Path.save_root_dir()
-db_root_dir = '../../../data/azhevnerchuk/DAVIS-17'
+db_root_dir = '../../../data/azhevnerchuk/DAVIS'
 
 
 if not os.path.exists(save_dir):
@@ -58,13 +58,13 @@ device = torch.device("cuda:"+str(gpu_id) if torch.cuda.is_available() else "cpu
 print(device)
 
 # Network definition
-net = vo.OSVOS(pretrained=0)
+os_net = vo.OSVOS(pretrained=0)
 # net.load_state_dict(torch.load(os.path.join(save_dir, parentModelName+'_epoch-'+str(parentEpoch-1)+'.pth'),
 #                                map_location=lambda storage, loc: storage))
-net.load_state_dict(torch.load(parentModelName+'_epoch-'+str(parentEpoch-1)+'.pth',
+os_net.load_state_dict(torch.load(parentModelName+'_epoch-'+str(parentEpoch-1)+'.pth',
                                map_location=lambda storage, loc: storage))
 # net.load_state_dict(parentModelName+'_epoch-'+str(parentEpoch-1)+'.pth')
-
+net = vo.OSVOS_skip(os_net)
 
 # Logging into Tensorboard
 log_dir = os.path.join(save_dir, 'runs', datetime.now().strftime('%b%d_%H-%M-%S') + '_' + socket.gethostname()+'-'+seq_name)
@@ -85,14 +85,14 @@ if vis_net:
 lr = 1e-8
 wd = 0.0002
 optimizer = optim.SGD([
-    {'params': [pr[1] for pr in net.stages.named_parameters() if 'weight' in pr[0]], 'weight_decay': wd},
-    {'params': [pr[1] for pr in net.stages.named_parameters() if 'bias' in pr[0]], 'lr': lr * 2},
-    {'params': [pr[1] for pr in net.side_prep.named_parameters() if 'weight' in pr[0]], 'weight_decay': wd},
-    {'params': [pr[1] for pr in net.side_prep.named_parameters() if 'bias' in pr[0]], 'lr': lr*2},
-    {'params': [pr[1] for pr in net.upscale.named_parameters() if 'weight' in pr[0]], 'lr': 0},
-    {'params': [pr[1] for pr in net.upscale_.named_parameters() if 'weight' in pr[0]], 'lr': 0},
-    {'params': net.fuse.weight, 'lr': lr/100, 'weight_decay': wd},
-    {'params': net.fuse.bias, 'lr': 2*lr/100},
+    {'params': [pr[1] for pr in net.osvos.stages.named_parameters() if 'weight' in pr[0]], 'weight_decay': wd},
+    {'params': [pr[1] for pr in net.osvos.stages.named_parameters() if 'bias' in pr[0]], 'lr': lr * 2},
+    {'params': [pr[1] for pr in net.osvos.side_prep.named_parameters() if 'weight' in pr[0]], 'weight_decay': wd},
+    {'params': [pr[1] for pr in net.osvos.side_prep.named_parameters() if 'bias' in pr[0]], 'lr': lr*2},
+    {'params': [pr[1] for pr in net.osvos.upscale.named_parameters() if 'weight' in pr[0]], 'lr': 0},
+    {'params': [pr[1] for pr in net.osvos.upscale_.named_parameters() if 'weight' in pr[0]], 'lr': 0},
+    {'params': net.final.weight, 'lr': lr/100, 'weight_decay': wd},
+    {'params': net.final.bias, 'lr': 2*lr/100},
     ], lr=lr, momentum=0.9)
 
 # Preparation of the data loaders
@@ -102,7 +102,7 @@ composed_transforms = transforms.Compose([tr.RandomHorizontalFlip(),
                                           tr.ToTensor()])
 # Training dataset and its iterator
 db_train = db.DAVIS2016(train=True, db_root_dir=db_root_dir, transform=composed_transforms, seq_name=seq_name, num_imgs=num_imgs)
-trainloader = DataLoader(db_train, batch_size=p['trainBatch'], shuffle=True, num_workers=1)
+trainloader = DataLoader(db_train, batch_size=p['trainBatch'], shuffle=False, num_workers=1)
 
 # Testing dataset and its iterator
 db_test = db.DAVIS2016(train=False, db_root_dir=db_root_dir, transform=tr.ToTensor(), seq_name=seq_name)
@@ -123,13 +123,13 @@ for epoch in range(0, nEpochs):
     np.random.seed(seed + epoch)
     for ii, sample_batched in enumerate(trainloader):
 
-        inputs, gts = sample_batched['image'], sample_batched['gt']
+        inputs, gts, ffs = sample_batched['image'], sample_batched['gt'], sample_batched['first_frame']
 
         # Forward-Backward of the mini-batch
         inputs.requires_grad_()
         inputs, gts = inputs.to(device), gts.to(device)
 
-        outputs = net.forward(inputs)
+        outputs = net.forward(inputs, ffs)
 
         # Compute the fuse loss
         loss = class_balanced_cross_entropy_loss(outputs[-1], gts, size_average=False)
@@ -146,7 +146,8 @@ for epoch in range(0, nEpochs):
 
         # Backward the averaged gradient
         loss /= nAveGrad
-        loss.backward()
+        # TODO: learn why it doesn't work without retain_graph=True
+        loss.backward(retain_graph=True)
         aveGrad += 1
 
         # Update the weights once in nAveGrad forward passes
@@ -181,16 +182,16 @@ with torch.no_grad():  # PyTorch 0.4.0 style
     # Main Testing Loop
     for ii, sample_batched in enumerate(testloader):
 
-        img, gt, fname = sample_batched['image'], sample_batched['gt'], sample_batched['fname']
+        img, gt, fname, ffs = sample_batched['image'], sample_batched['gt'], sample_batched['fname'], sample_batched['first_frame']
 
         # Forward of the mini-batch
         inputs, gts = img.to(device), gt.to(device)
 
-        outputs = net.forward(inputs)
+        outputs = net.forward(inputs, ffs)
 
         for jj in range(int(inputs.size()[0])):
             pred = np.transpose(outputs[-1].cpu().data.numpy()[jj, :, :, :], (1, 2, 0))
-            pred = 1 / (1 + np.exp(-pred))
+            pred = 1 / (1 + np.exp(np.clip(-pred, -10, 10)))
             pred = np.squeeze(pred)
 
             # Save the result, attention to the index jj

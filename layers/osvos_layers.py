@@ -41,9 +41,18 @@ def class_balanced_cross_entropy_loss(output, label, weights = [1.0/3.0, 1.0/3.0
     loss_val = torch.mul(loss_val, weights_torch)
 
     if print_loss_by_class:
-        print("Loss for the first channel: ", torch.sum(-torch.mul(labels[0][0], loss_val[0][0])).data)
-        print("Loss for the second channel: ", torch.sum(-torch.mul(labels[0][1], loss_val[0][1])).data)
-        print("Loss for the third channel: ", torch.sum(-torch.mul(labels[0][2], loss_val[0][2])).data, "\n")
+        loss_pos_1 = torch.sum(-torch.mul(labels[0][0], loss_val[0][0]))
+        loss_neg_1 = torch.sum(-torch.mul(1.0 - labels[0][0], loss_val[0][0]))
+        print("Loss for the first channel: ", (num_labels_neg / num_total * loss_pos_1 + num_labels_pos / num_total * loss_neg_1).data)
+
+        loss_pos_2 = torch.sum(-torch.mul(labels[0][1], loss_val[0][1]))
+        loss_neg_2 = torch.sum(-torch.mul(1.0 - labels[0][1], loss_val[0][1]))
+        print("Loss for the second channel: ", (num_labels_neg / num_total * loss_pos_2 + num_labels_pos / num_total * loss_neg_2).data)
+
+        loss_pos_3 = torch.sum(-torch.mul(labels[0][2], loss_val[0][2]))
+        loss_neg_3 = torch.sum(-torch.mul(1.0 - labels[0][2], loss_val[0][2]))
+        print("Loss for the third channel: ", (num_labels_neg / num_total * loss_pos_3 + num_labels_pos / num_total * loss_neg_3).data, "\n")
+
 
     loss_pos = torch.sum(-torch.mul(labels, loss_val))
     loss_neg = torch.sum(-torch.mul(1.0 - labels, loss_val))

@@ -25,13 +25,13 @@ from mypath import Path
 
 # Setting of parameters
 if 'SEQ_NAME' not in os.environ.keys():
-    seq_name = 'blackswan'
+    seq_name = 'motocross-jump'
 else:
     seq_name = str(os.environ['SEQ_NAME'])
 
 db_root_dir = Path.db_root_dir()
 save_dir = Path.save_root_dir()
-db_root_dir = '../../../data/azhevnerchuk/DAVIS'
+db_root_dir = '../../../data/azhevnerchuk/DAVIS-17'
 
 
 if not os.path.exists(save_dir):
@@ -40,7 +40,7 @@ if not os.path.exists(save_dir):
 vis_net = 0  # Visualize the network?
 vis_res = 0  # Visualize the results?
 nAveGrad = 5  # Average the gradient every nAveGrad iterations
-nEpochs = 200 * nAveGrad  # Number of epochs for training
+nEpochs = 500 * nAveGrad  # Number of epochs for training
 snapshot = nEpochs  # Store a model every snapshot epochs
 parentEpoch = 240
 num_imgs = 2
@@ -124,7 +124,7 @@ for epoch in range(0, nEpochs):
     for ii, sample_batched in enumerate(trainloader):
 
         inputs, gts, ffs = sample_batched['image'], sample_batched['gt'], sample_batched['first_frame']
-
+        
         # Forward-Backward of the mini-batch
         inputs.requires_grad_()
         inputs, gts = inputs.to(device), gts.to(device)

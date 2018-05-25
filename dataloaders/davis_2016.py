@@ -102,9 +102,9 @@ class DAVIS2016(Dataset):
 
         img = cv2.imread(os.path.join(self.db_root_dir, self.img_list[idx]))
         if self.labels[idx] is not None:
-            label = cv2.imread(os.path.join(self.db_root_dir, self.labels[idx]), 0)
+            label = cv2.imread(os.path.join(self.db_root_dir, self.labels[idx]))
         else:
-            gt = np.zeros(img.shape[:-1], dtype=np.uint8)
+            gt = np.zeros(img.shape, dtype=np.uint8)
 
         if self.inputRes is not None:
             img = imresize(img, self.inputRes)

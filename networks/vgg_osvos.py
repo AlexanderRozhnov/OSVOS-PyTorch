@@ -18,7 +18,7 @@ class OSVOS_skip(nn.Module):
 
         print("Constructing OSVOS-skip architecture..")
         self.osvos = osvos
-        self.final = nn.Conv2d(128, 1, kernel_size=1, padding=0)
+        self.final = nn.Conv2d(128, 3, kernel_size=1, padding=0)
         
         
     def forward(self, x, first_frame):

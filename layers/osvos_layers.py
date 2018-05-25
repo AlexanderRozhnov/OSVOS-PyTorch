@@ -16,7 +16,7 @@ def sigmoid_np(x):
     return 1/(1+np.exp(-x))
 
 
-def class_balanced_cross_entropy_loss(output, label, size_average=True, batch_average=True):
+def class_balanced_cross_entropy_loss(output, label, weights = [1.0/3.0, 1.0/3.0, 1.0/3.0,], size_average=True, batch_average=True, print_loss_by_class=False):
     """Define the class balanced cross entropy loss to train the network
     Args:
     output: Output of the network
@@ -34,6 +34,16 @@ def class_balanced_cross_entropy_loss(output, label, size_average=True, batch_av
     output_gt_zero = torch.ge(output, 0).float()
     loss_val = torch.mul(output, (labels - output_gt_zero)) - torch.log(
         1 + torch.exp(output - 2 * torch.mul(output, output_gt_zero)))
+
+    # apply different weights to different channels
+    weights = np.array(weights, dtype=np.float32)
+    weights_torch = torch.from_numpy(weights/np.sum(weights)).unsqueeze(0).unsqueeze(2).unsqueeze(3).cuda()
+    loss_val = torch.mul(loss_val, weights_torch)
+
+    if print_loss_by_class:
+        print("Loss for the first channel: ", torch.sum(-torch.mul(labels[0][0], loss_val[0][0])).data)
+        print("Loss for the second channel: ", torch.sum(-torch.mul(labels[0][1], loss_val[0][1])).data)
+        print("Loss for the third channel: ", torch.sum(-torch.mul(labels[0][2], loss_val[0][2])).data, "\n")
 
     loss_pos = torch.sum(-torch.mul(labels, loss_val))
     loss_neg = torch.sum(-torch.mul(1.0 - labels, loss_val))

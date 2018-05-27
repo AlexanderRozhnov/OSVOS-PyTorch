@@ -13,12 +13,12 @@ from layers.osvos_layers import center_crop, interp_surgery
 from mypath import Path
 
 class OSVOS_skip(nn.Module):
-    def __init__(self, osvos):
+    def __init__(self, osvos, n_channels=1):
         super(OSVOS_skip, self).__init__()
 
         print("Constructing OSVOS-skip architecture..")
         self.osvos = osvos
-        self.final = nn.Conv2d(128, 3, kernel_size=1, padding=0)
+        self.final = nn.Conv2d(128, n_channels, kernel_size=1, padding=0)
         
         
     def forward(self, x, first_frame):

@@ -6,6 +6,7 @@ import cv2
 from scipy.misc import imresize
 
 from dataloaders.helpers import *
+from dataloaders.multiclass_maker import MulticlassWrapper
 from torch.utils.data import Dataset
 
 
@@ -29,6 +30,7 @@ class DAVIS2016(Dataset):
         self.meanval = meanval
         self.seq_name = seq_name
         self.num_imgs = num_imgs
+        self.wrapper = None
 
         if self.train:
             fname = 'train'
@@ -64,6 +66,8 @@ class DAVIS2016(Dataset):
             	img_list = img_list[:self.num_imgs]
             	labels = labels[:self.num_imgs]	
             
+            img = cv2.imread(os.path.join(self.db_root_dir, labels[0]))
+            self.wrapper = MulticlassWrapper(img)
             
         assert (len(labels) == len(img_list))
 
@@ -115,8 +119,11 @@ class DAVIS2016(Dataset):
         img = np.subtract(img, np.array(self.meanval, dtype=np.float32))
 
         if self.labels[idx] is not None:
+            if self.wrapper is not None:
+                gt = self.wrapper.img_to_channels(label)
+            else:
                 gt = np.array(label, dtype=np.float32)
-                gt = gt/np.max([gt.max(), 1e-8])
+            gt = gt/np.max([gt.max(), 1e-8])
 
         return img, gt
 

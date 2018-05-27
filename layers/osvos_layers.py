@@ -16,7 +16,7 @@ def sigmoid_np(x):
     return 1/(1+np.exp(-x))
 
 
-def class_balanced_cross_entropy_loss(output, label, weights = [1.0/3.0, 1.0/3.0, 1.0/3.0,], size_average=True, batch_average=True, print_loss_by_class=False):
+def class_balanced_cross_entropy_loss(output, label, size_average=True, batch_average=True):
     """Define the class balanced cross entropy loss to train the network
     Args:
     output: Output of the network
@@ -27,37 +27,19 @@ def class_balanced_cross_entropy_loss(output, label, weights = [1.0/3.0, 1.0/3.0
 
     labels = torch.ge(label, 0.5).float()
 
-    num_labels_pos = torch.sum(labels)
-    num_labels_neg = torch.sum(1.0 - labels)
+    num_labels_pos = labels.sum(3).sum(2).sum(0)
+    num_labels_neg = (1.0 - labels).sum(3).sum(2).sum(0)
     num_total = num_labels_pos + num_labels_neg
 
     output_gt_zero = torch.ge(output, 0).float()
     loss_val = torch.mul(output, (labels - output_gt_zero)) - torch.log(
-        1 + torch.exp(output - 2 * torch.mul(output, output_gt_zero)))
+        1 + torch.exp(torch.clamp(output - 2 * torch.mul(output, output_gt_zero), -10, 10)))
 
-    # apply different weights to different channels
-    weights = np.array(weights, dtype=np.float32)
-    weights_torch = torch.from_numpy(weights/np.sum(weights)).unsqueeze(0).unsqueeze(2).unsqueeze(3).cuda()
-    loss_val = torch.mul(loss_val, weights_torch)
+    loss_pos = -torch.mul(labels, loss_val).sum(3).sum(2).sum(0)
+    loss_neg = -torch.mul(1.0 - labels, loss_val).sum(3).sum(2).sum(0)
 
-    if print_loss_by_class:
-        loss_pos_1 = torch.sum(-torch.mul(labels[0][0], loss_val[0][0]))
-        loss_neg_1 = torch.sum(-torch.mul(1.0 - labels[0][0], loss_val[0][0]))
-        print("Loss for the first channel: ", (num_labels_neg / num_total * loss_pos_1 + num_labels_pos / num_total * loss_neg_1).data)
+    final_loss = torch.sum(num_labels_neg / num_total * loss_pos + num_labels_pos / num_total * loss_neg)
 
-        loss_pos_2 = torch.sum(-torch.mul(labels[0][1], loss_val[0][1]))
-        loss_neg_2 = torch.sum(-torch.mul(1.0 - labels[0][1], loss_val[0][1]))
-        print("Loss for the second channel: ", (num_labels_neg / num_total * loss_pos_2 + num_labels_pos / num_total * loss_neg_2).data)
-
-        loss_pos_3 = torch.sum(-torch.mul(labels[0][2], loss_val[0][2]))
-        loss_neg_3 = torch.sum(-torch.mul(1.0 - labels[0][2], loss_val[0][2]))
-        print("Loss for the third channel: ", (num_labels_neg / num_total * loss_pos_3 + num_labels_pos / num_total * loss_neg_3).data, "\n")
-
-
-    loss_pos = torch.sum(-torch.mul(labels, loss_val))
-    loss_neg = torch.sum(-torch.mul(1.0 - labels, loss_val))
-
-    final_loss = num_labels_neg / num_total * loss_pos + num_labels_pos / num_total * loss_neg
 
     if size_average:
         final_loss /= np.prod(label.size())

@@ -25,7 +25,7 @@ from mypath import Path
 
 # Setting of parameters
 if 'SEQ_NAME' not in os.environ.keys():
-    seq_name = 'motocross-jump'
+    seq_name = 'mbike-trick'
 else:
     seq_name = str(os.environ['SEQ_NAME'])
 
@@ -53,9 +53,25 @@ seed = 0
 
 parentModelName = 'parent'
 # Select which GPU, -1 if CPU
-gpu_id = 4
+gpu_id = 0
 device = torch.device("cuda:"+str(gpu_id) if torch.cuda.is_available() else "cpu")
 print(device)
+
+
+# Preparation of the data loaders
+# Define augmentation transformations as a composition
+composed_transforms = transforms.Compose([tr.RandomHorizontalFlip(),
+                                          tr.ScaleNRotate(rots=(-30, 30), scales=(.75, 1.25)),
+                                          tr.ToTensor()])
+
+
+# Training dataset and its iterator
+db_train = db.DAVIS2016(train=True, db_root_dir=db_root_dir, transform=composed_transforms, seq_name=seq_name, num_imgs=num_imgs)
+trainloader = DataLoader(db_train, batch_size=p['trainBatch'], shuffle=False, num_workers=1)
+
+# Testing dataset and its iterator
+db_test = db.DAVIS2016(train=False, db_root_dir=db_root_dir, transform=tr.ToTensor(), seq_name=seq_name)
+testloader = DataLoader(db_test, batch_size=1, shuffle=False, num_workers=1)
 
 # Network definition
 os_net = vo.OSVOS(pretrained=0)
@@ -64,7 +80,7 @@ os_net = vo.OSVOS(pretrained=0)
 os_net.load_state_dict(torch.load(parentModelName+'_epoch-'+str(parentEpoch-1)+'.pth',
                                map_location=lambda storage, loc: storage))
 # net.load_state_dict(parentModelName+'_epoch-'+str(parentEpoch-1)+'.pth')
-net = vo.OSVOS_skip(os_net)
+net = vo.OSVOS_skip(os_net, db_train.wrapper.n_channels)
 
 # Logging into Tensorboard
 log_dir = os.path.join(save_dir, 'runs', datetime.now().strftime('%b%d_%H-%M-%S') + '_' + socket.gethostname()+'-'+seq_name)
@@ -94,19 +110,6 @@ optimizer = optim.SGD([
     {'params': net.final.weight, 'lr': lr/100, 'weight_decay': wd},
     {'params': net.final.bias, 'lr': 2*lr/100},
     ], lr=lr, momentum=0.9)
-
-# Preparation of the data loaders
-# Define augmentation transformations as a composition
-composed_transforms = transforms.Compose([tr.RandomHorizontalFlip(),
-                                          tr.ScaleNRotate(rots=(-30, 30), scales=(.75, 1.25)),
-                                          tr.ToTensor()])
-# Training dataset and its iterator
-db_train = db.DAVIS2016(train=True, db_root_dir=db_root_dir, transform=composed_transforms, seq_name=seq_name, num_imgs=num_imgs)
-trainloader = DataLoader(db_train, batch_size=p['trainBatch'], shuffle=False, num_workers=1)
-
-# Testing dataset and its iterator
-db_test = db.DAVIS2016(train=False, db_root_dir=db_root_dir, transform=tr.ToTensor(), seq_name=seq_name)
-testloader = DataLoader(db_test, batch_size=1, shuffle=False, num_workers=1)
 
 
 num_img_tr = len(trainloader)
@@ -193,6 +196,7 @@ with torch.no_grad():  # PyTorch 0.4.0 style
             pred = np.transpose(outputs[-1].cpu().data.numpy()[jj, :, :, :], (1, 2, 0))
             pred = 1 / (1 + np.exp(np.clip(-pred, -10, 10)))
             pred = np.squeeze(pred)
+            pred = db_train.wrapper.channels_to_img(pred)
 
             # Save the result, attention to the index jj
             sm.imsave(os.path.join(save_dir_res, os.path.basename(fname[jj]) + '.png'), pred)
